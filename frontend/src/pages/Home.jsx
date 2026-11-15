@@ -68,7 +68,7 @@ export default function Home({ onOpenAddProduct, onOpenEditProduct }) {
   return (
     <div className="min-h-screen bg-slate-50/50 pb-20">
       {/* Hero Banner */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-sky-900 via-slate-900 to-slate-900 text-white py-16 sm:py-24">
+      <section className="relative overflow-hidden bg-gradient-to-b from-sky-900 via-slate-900 to-slate-900 text-white py-16 sm:py-20">
         {/* Glow Effects */}
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-sky-500/20 rounded-full blur-3xl pointer-events-none"></div>
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none"></div>
@@ -112,29 +112,41 @@ export default function Home({ onOpenAddProduct, onOpenEditProduct }) {
         </div>
       </section>
 
-      {/* Main Container */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6">
-        {/* Filter Bar Card */}
-        <div className="bg-white rounded-3xl p-5 shadow-xl border border-slate-200/80 mb-8 space-y-4">
-          {/* Category Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all ${
-                  selectedCategory === cat
-                    ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+      {/* Main Container with generous top spacing */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 sm:pt-10">
+        {/* Filter Bar Card with spacious padding */}
+        <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-xl border border-slate-200/80 mb-10 space-y-6">
+          {/* Category Section with clean label */}
+          <div>
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                Filter by Category
+              </span>
+              <span className="text-xs text-slate-400">
+                Active: <strong className="text-slate-700">{selectedCategory}</strong>
+              </span>
+            </div>
+
+            {/* Category Pills */}
+            <div className="flex items-center gap-2.5 overflow-x-auto pb-2 pt-1 scrollbar-none">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all ${
+                    selectedCategory === cat
+                      ? 'bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Secondary Controls: Price Filter & Sorting */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-3 border-t border-slate-100 text-sm">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100 text-sm">
             {/* Price Inputs */}
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
@@ -145,7 +157,7 @@ export default function Home({ onOpenAddProduct, onOpenEditProduct }) {
                 placeholder="Min ₹"
                 value={minPrice}
                 onChange={(e) => setMinPrice(e.target.value)}
-                className="w-24 px-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                className="w-28 px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
               />
               <span className="text-slate-400">-</span>
               <input
@@ -153,7 +165,7 @@ export default function Home({ onOpenAddProduct, onOpenEditProduct }) {
                 placeholder="Max ₹"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(e.target.value)}
-                className="w-24 px-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                className="w-28 px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
               />
               {(minPrice || maxPrice) && (
                 <button
@@ -161,7 +173,7 @@ export default function Home({ onOpenAddProduct, onOpenEditProduct }) {
                     setMinPrice('');
                     setMaxPrice('');
                   }}
-                  className="text-xs text-rose-500 hover:underline font-semibold"
+                  className="text-xs text-rose-500 hover:underline font-semibold ml-1"
                 >
                   Reset
                 </button>
@@ -174,7 +186,7 @@ export default function Home({ onOpenAddProduct, onOpenEditProduct }) {
                 Found <strong className="text-slate-800">{totalCount}</strong> items
               </span>
 
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl">
                 <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
                 <select
                   value={sort}
@@ -229,7 +241,7 @@ export default function Home({ onOpenAddProduct, onOpenEditProduct }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {products.map((product) => (
               <ProductCard
-                key={product._id}
+                key={product._id || product.id}
                 product={product}
                 onViewDetails={(p) => setSelectedProduct(p)}
                 onEditProduct={onOpenEditProduct}
@@ -251,4 +263,3 @@ export default function Home({ onOpenAddProduct, onOpenEditProduct }) {
     </div>
   );
 }
-
