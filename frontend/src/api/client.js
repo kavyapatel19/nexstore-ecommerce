@@ -23,21 +23,16 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor to catch 401 unauthorized errors
+// Response interceptor to catch 401 unauthorized errors and clear corrupted/stale tokens
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Optional: auto-logout on token expiration if not on login page
-      const currentPath = window.location.pathname;
-      if (currentPath !== '/login' && currentPath !== '/register') {
-        // localStorage.removeItem('token');
-        // localStorage.removeItem('user');
-      }
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
     }
     return Promise.reject(error);
   }
 );
 
 export default api;
-

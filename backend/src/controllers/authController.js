@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const User = require('../models/User');
+const memoryStore = require('../config/memoryStore');
 
-// Helper to generate JWT
 const generateToken = (id) => {
   return jwt.sign(
     { id },
@@ -26,41 +27,75 @@ const register = async (req, res, next) => {
       });
     }
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'A user with this email address already exists',
-      });
-    }
-
-    // Sanitize role: only allow 'user' or 'sales' on open self-registration; 'admin' should be seeded or elevated by admin
     let userRole = 'user';
     if (role && ['user', 'sales'].includes(role)) {
       userRole = role;
     }
 
-    const user = await User.create({
-      name,
-      email,
-      password,
-      role: userRole,
-    });
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    const token = generateToken(user._id);
+    if (isMongo) {
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: 'A user with this email address already exists',
+        });
+      }
 
-    res.status(201).json({
-      success: true,
-      message: 'Registration successful',
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        avatar: user.avatar,
-      },
-    });
+      const user = await User.create({
+        name,
+        email,
+        password,
+        role: userRole,
+      });
+
+      const token = generateToken(user._id);
+
+      return res.status(201).json({
+        success: true,
+        message: 'Registration successful',
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          avatar: user.avatar,
+        },
+      });
+    } else {
+      // Memory Store fallback
+      const existingUser = memoryStore.findUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: 'A user with this email address already exists',
+        });
+      }
+
+      const user = memoryStore.createUser({
+        name,
+        email,
+        password,
+        role: userRole,
+      });
+
+      const token = generateToken(user._id);
+
+      return res.status(201).json({
+        success: true,
+        message: 'Registration successful',
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          avatar: user.avatar,
+        },
+      });
+    }
   } catch (error) {
     next(error);
   }
@@ -80,8 +115,15 @@ const login = async (req, res, next) => {
       });
     }
 
-    // Include password which is excluded by default in schema
-    const user = await User.findOne({ email }).select('+password');
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
+    let user;
+
+    if (isMongo) {
+      user = await User.findOne({ email }).select('+password');
+    } else {
+      user = memoryStore.findUserByEmail(email);
+    }
+
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -97,14 +139,15 @@ const login = async (req, res, next) => {
       });
     }
 
-    const token = generateToken(user._id);
+    const userId = user._id || user.id;
+    const token = generateToken(userId);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Logged in successfully',
       token,
       user: {
-        id: user._id,
+        id: userId,
         name: user.name,
         email: user.email,
         role: user.role,
@@ -121,16 +164,28 @@ const login = async (req, res, next) => {
 // @access  Private
 const getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id);
-    res.status(200).json({
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
+    let user;
+
+    if (isMongo) {
+      user = await User.findById(req.user._id);
+    } else {
+      user = memoryStore.findUserById(req.user._id || req.user.id);
+    }
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    return res.status(200).json({
       success: true,
       user: {
-        id: user._id,
+        id: user._id || user.id,
         name: user.name,
         email: user.email,
         role: user.role,
         avatar: user.avatar,
-        phone: user.phone,
+        phone: user.phone || '',
         createdAt: user.createdAt,
       },
     });
@@ -144,4 +199,3 @@ module.exports = {
   login,
   getMe,
 };
-

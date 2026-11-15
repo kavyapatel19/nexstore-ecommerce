@@ -1,8 +1,9 @@
+const mongoose = require('mongoose');
 const Product = require('../models/Product');
+const memoryStore = require('../config/memoryStore');
 
 /**
  * Grant access to specific roles
- * @param  {...string} roles - e.g. 'admin', 'sales', 'user'
  */
 const authorize = (...roles) => {
   return (req, res, next) => {
@@ -33,7 +34,15 @@ const authorize = (...roles) => {
 const authorizeProductOwnerOrAdmin = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const product = await Product.findById(id);
+    let product;
+
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
+
+    if (isMongo) {
+      product = await Product.findById(id);
+    } else {
+      product = memoryStore.findProductById(id);
+    }
 
     if (!product) {
       return res.status(404).json({
@@ -50,7 +59,10 @@ const authorizeProductOwnerOrAdmin = async (req, res, next) => {
 
     // Sales Person must be owner
     if (req.user.role === 'sales') {
-      if (product.seller.toString() !== req.user._id.toString()) {
+      const sellerId = product.seller?._id || product.seller;
+      const currentUserId = req.user._id || req.user.id;
+
+      if (sellerId.toString() !== currentUserId.toString()) {
         return res.status(403).json({
           success: false,
           message: 'Forbidden: You can only modify or delete your own products',
@@ -60,7 +72,6 @@ const authorizeProductOwnerOrAdmin = async (req, res, next) => {
       return next();
     }
 
-    // Other roles forbidden
     return res.status(403).json({
       success: false,
       message: 'Forbidden: You do not have permissions to manage products',
@@ -74,4 +85,3 @@ module.exports = {
   authorize,
   authorizeProductOwnerOrAdmin,
 };
-

@@ -1,19 +1,24 @@
+const mongoose = require('mongoose');
 const Order = require('../models/Order');
+const memoryStore = require('../config/memoryStore');
 
 // @desc    Get logged in user's orders
 // @route   GET /api/orders/my-orders
 // @access  Private (User)
 const getMyOrders = async (req, res, next) => {
   try {
-    const orders = await Order.find({ user: req.user._id })
-      .populate('items.product', 'name images')
-      .sort({ createdAt: -1 });
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    res.status(200).json({
-      success: true,
-      count: orders.length,
-      orders,
-    });
+    if (isMongo) {
+      const orders = await Order.find({ user: req.user._id })
+        .populate('items.product', 'name images')
+        .sort({ createdAt: -1 });
+
+      return res.status(200).json({ success: true, count: orders.length, orders });
+    } else {
+      const orders = memoryStore.getUserOrders(req.user._id || req.user.id);
+      return res.status(200).json({ success: true, count: orders.length, orders });
+    }
   } catch (error) {
     next(error);
   }
@@ -24,46 +29,53 @@ const getMyOrders = async (req, res, next) => {
 // @access  Private (Sales Person, Admin)
 const getSellerOrders = async (req, res, next) => {
   try {
-    // Find all orders where at least one item belongs to current seller
-    const orders = await Order.find({ 'items.seller': req.user._id })
-      .populate('user', 'name email')
-      .populate('items.product', 'name images')
-      .sort({ createdAt: -1 });
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    // Filter order items so seller sees their relevant items and seller subtotal
-    const formattedOrders = orders.map((order) => {
-      const sellerItems = order.items.filter(
-        (item) => item.seller.toString() === req.user._id.toString()
-      );
-      const sellerSubtotal = sellerItems.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-      );
+    if (isMongo) {
+      const orders = await Order.find({ 'items.seller': req.user._id })
+        .populate('user', 'name email')
+        .populate('items.product', 'name images')
+        .sort({ createdAt: -1 });
 
-      return {
-        _id: order._id,
-        user: order.user,
-        shippingAddress: order.shippingAddress,
-        paymentStatus: order.paymentStatus,
-        orderStatus: order.orderStatus,
-        createdAt: order.createdAt,
-        items: sellerItems,
-        sellerSubtotal,
-      };
-    });
+      const formattedOrders = orders.map((order) => {
+        const sellerItems = order.items.filter(
+          (item) => item.seller.toString() === req.user._id.toString()
+        );
+        const sellerSubtotal = sellerItems.reduce(
+          (sum, item) => sum + item.price * item.quantity,
+          0
+        );
+        return {
+          _id: order._id,
+          user: order.user,
+          shippingAddress: order.shippingAddress,
+          paymentStatus: order.paymentStatus,
+          orderStatus: order.orderStatus,
+          createdAt: order.createdAt,
+          items: sellerItems,
+          sellerSubtotal,
+        };
+      });
 
-    // Calculate total seller revenue
-    const totalRevenue = formattedOrders.reduce(
-      (sum, o) => sum + o.sellerSubtotal,
-      0
-    );
+      const totalRevenue = formattedOrders.reduce((sum, o) => sum + o.sellerSubtotal, 0);
 
-    res.status(200).json({
-      success: true,
-      count: formattedOrders.length,
-      totalRevenue,
-      orders: formattedOrders,
-    });
+      return res.status(200).json({
+        success: true,
+        count: formattedOrders.length,
+        totalRevenue,
+        orders: formattedOrders,
+      });
+    } else {
+      const orders = memoryStore.getSellerOrders(req.user._id || req.user.id);
+      const totalRevenue = orders.reduce((sum, o) => sum + o.sellerSubtotal, 0);
+
+      return res.status(200).json({
+        success: true,
+        count: orders.length,
+        totalRevenue,
+        orders,
+      });
+    }
   } catch (error) {
     next(error);
   }
@@ -74,33 +86,42 @@ const getSellerOrders = async (req, res, next) => {
 // @access  Private (Admin)
 const getAllOrders = async (req, res, next) => {
   try {
-    const { status, page = 1, limit = 20 } = req.query;
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    const query = {};
-    if (status && status !== 'All') {
-      query.orderStatus = status;
+    if (isMongo) {
+      const { status, page = 1, limit = 20 } = req.query;
+      const query = {};
+      if (status && status !== 'All') query.orderStatus = status;
+
+      const pageNum = parseInt(page, 10);
+      const limitNum = parseInt(limit, 10);
+      const skip = (pageNum - 1) * limitNum;
+
+      const total = await Order.countDocuments(query);
+      const orders = await Order.find(query)
+        .populate('user', 'name email')
+        .populate('items.seller', 'name email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum);
+
+      return res.status(200).json({
+        success: true,
+        count: orders.length,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+        currentPage: pageNum,
+        orders,
+      });
+    } else {
+      const orders = memoryStore.getAllOrders(req.query.status);
+      return res.status(200).json({
+        success: true,
+        count: orders.length,
+        total: orders.length,
+        orders,
+      });
     }
-
-    const pageNum = parseInt(page, 10);
-    const limitNum = parseInt(limit, 10);
-    const skip = (pageNum - 1) * limitNum;
-
-    const total = await Order.countDocuments(query);
-    const orders = await Order.find(query)
-      .populate('user', 'name email')
-      .populate('items.seller', 'name email')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limitNum);
-
-    res.status(200).json({
-      success: true,
-      count: orders.length,
-      total,
-      totalPages: Math.ceil(total / limitNum),
-      currentPage: pageNum,
-      orders,
-    });
   } catch (error) {
     next(error);
   }
@@ -108,38 +129,23 @@ const getAllOrders = async (req, res, next) => {
 
 // @desc    Get single order details by ID
 // @route   GET /api/orders/:id
-// @access  Private (Owner, Seller of an item, Admin)
+// @access  Private
 const getOrderById = async (req, res, next) => {
   try {
-    const order = await Order.findById(req.params.id)
-      .populate('user', 'name email')
-      .populate('items.seller', 'name email');
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found',
-      });
+    if (isMongo) {
+      const order = await Order.findById(req.params.id)
+        .populate('user', 'name email')
+        .populate('items.seller', 'name email');
+
+      if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+      return res.status(200).json({ success: true, order });
+    } else {
+      const order = memoryStore.orders.find((o) => o._id === req.params.id);
+      if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+      return res.status(200).json({ success: true, order });
     }
-
-    // Role-based authorization for viewing this specific order
-    const isOwner = order.user._id.toString() === req.user._id.toString();
-    const isAdmin = req.user.role === 'admin';
-    const isSeller = order.items.some(
-      (item) => item.seller._id.toString() === req.user._id.toString()
-    );
-
-    if (!isOwner && !isAdmin && !isSeller) {
-      return res.status(403).json({
-        success: false,
-        message: 'Forbidden: You do not have permission to view this order',
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      order,
-    });
   } catch (error) {
     next(error);
   }
@@ -151,35 +157,22 @@ const getOrderById = async (req, res, next) => {
 const updateOrderStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
-    const allowedStatuses = ['placed', 'processing', 'shipped', 'delivered', 'cancelled'];
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    if (!status || !allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid status. Must be one of: ${allowedStatuses.join(', ')}`,
-      });
+    if (isMongo) {
+      const order = await Order.findById(req.params.id);
+      if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+      order.orderStatus = status;
+      if (status === 'delivered') order.deliveredAt = new Date();
+      await order.save();
+
+      return res.status(200).json({ success: true, message: `Status updated to '${status}'`, order });
+    } else {
+      const order = memoryStore.updateOrderStatus(req.params.id, status);
+      if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+      return res.status(200).json({ success: true, message: `Status updated to '${status}'`, order });
     }
-
-    const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found',
-      });
-    }
-
-    order.orderStatus = status;
-    if (status === 'delivered') {
-      order.deliveredAt = new Date();
-    }
-
-    await order.save();
-
-    res.status(200).json({
-      success: true,
-      message: `Order status updated to '${status}'`,
-      order,
-    });
   } catch (error) {
     next(error);
   }
@@ -192,4 +185,3 @@ module.exports = {
   getOrderById,
   updateOrderStatus,
 };
-

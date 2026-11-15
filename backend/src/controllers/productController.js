@@ -1,4 +1,6 @@
+const mongoose = require('mongoose');
 const Product = require('../models/Product');
+const memoryStore = require('../config/memoryStore');
 const { uploadToCloudinary } = require('../config/cloudinary');
 
 // @desc    Get all products with filtering, search, sorting & pagination
@@ -6,57 +8,66 @@ const { uploadToCloudinary } = require('../config/cloudinary');
 // @access  Public
 const getProducts = async (req, res, next) => {
   try {
-    const { keyword, category, minPrice, maxPrice, sort, page = 1, limit = 12 } = req.query;
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    const query = {};
+    if (isMongo) {
+      const { keyword, category, minPrice, maxPrice, sort, page = 1, limit = 12 } = req.query;
+      const query = {};
 
-    // Keyword search on name or description
-    if (keyword) {
-      query.$or = [
-        { name: { $regex: keyword, $options: 'i' } },
-        { description: { $regex: keyword, $options: 'i' } },
-      ];
+      if (keyword) {
+        query.$or = [
+          { name: { $regex: keyword, $options: 'i' } },
+          { description: { $regex: keyword, $options: 'i' } },
+        ];
+      }
+
+      if (category && category !== 'All') {
+        query.category = category;
+      }
+
+      if (minPrice || maxPrice) {
+        query.price = {};
+        if (minPrice) query.price.$gte = Number(minPrice);
+        if (maxPrice) query.price.$lte = Number(maxPrice);
+      }
+
+      let sortOption = { createdAt: -1 };
+      if (sort === 'price-asc') sortOption = { price: 1 };
+      else if (sort === 'price-desc') sortOption = { price: -1 };
+      else if (sort === 'rating') sortOption = { 'ratings.average': -1 };
+      else if (sort === 'oldest') sortOption = { createdAt: 1 };
+
+      const pageNum = parseInt(page, 10);
+      const limitNum = parseInt(limit, 10);
+      const skip = (pageNum - 1) * limitNum;
+
+      const total = await Product.countDocuments(query);
+      const products = await Product.find(query)
+        .populate('seller', 'name email avatar role')
+        .sort(sortOption)
+        .skip(skip)
+        .limit(limitNum);
+
+      return res.status(200).json({
+        success: true,
+        count: products.length,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+        currentPage: pageNum,
+        products,
+      });
+    } else {
+      // Memory Store fallback
+      const { total, products } = memoryStore.getProducts(req.query);
+      return res.status(200).json({
+        success: true,
+        count: products.length,
+        total,
+        totalPages: Math.ceil(total / (Number(req.query.limit) || 12)),
+        currentPage: Number(req.query.page) || 1,
+        products,
+      });
     }
-
-    // Category filter
-    if (category && category !== 'All') {
-      query.category = category;
-    }
-
-    // Price range filter
-    if (minPrice || maxPrice) {
-      query.price = {};
-      if (minPrice) query.price.$gte = Number(minPrice);
-      if (maxPrice) query.price.$lte = Number(maxPrice);
-    }
-
-    // Sorting options
-    let sortOption = { createdAt: -1 }; // default newest
-    if (sort === 'price-asc') sortOption = { price: 1 };
-    else if (sort === 'price-desc') sortOption = { price: -1 };
-    else if (sort === 'rating') sortOption = { 'ratings.average': -1 };
-    else if (sort === 'oldest') sortOption = { createdAt: 1 };
-
-    // Pagination
-    const pageNum = parseInt(page, 10);
-    const limitNum = parseInt(limit, 10);
-    const skip = (pageNum - 1) * limitNum;
-
-    const total = await Product.countDocuments(query);
-    const products = await Product.find(query)
-      .populate('seller', 'name email avatar role')
-      .sort(sortOption)
-      .skip(skip)
-      .limit(limitNum);
-
-    res.status(200).json({
-      success: true,
-      count: products.length,
-      total,
-      totalPages: Math.ceil(total / limitNum),
-      currentPage: pageNum,
-      products,
-    });
   } catch (error) {
     next(error);
   }
@@ -67,22 +78,24 @@ const getProducts = async (req, res, next) => {
 // @access  Public
 const getProductById = async (req, res, next) => {
   try {
-    const product = await Product.findById(req.params.id).populate(
-      'seller',
-      'name email avatar role'
-    );
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found',
-      });
+    if (isMongo) {
+      const product = await Product.findById(req.params.id).populate(
+        'seller',
+        'name email avatar role'
+      );
+      if (!product) {
+        return res.status(404).json({ success: false, message: 'Product not found' });
+      }
+      return res.status(200).json({ success: true, product });
+    } else {
+      const product = memoryStore.findProductById(req.params.id);
+      if (!product) {
+        return res.status(404).json({ success: false, message: 'Product not found' });
+      }
+      return res.status(200).json({ success: true, product });
     }
-
-    res.status(200).json({
-      success: true,
-      product,
-    });
   } catch (error) {
     next(error);
   }
@@ -93,16 +106,30 @@ const getProductById = async (req, res, next) => {
 // @access  Private (Sales Person, Admin)
 const getMyProducts = async (req, res, next) => {
   try {
-    const filter = req.user.role === 'admin' ? {} : { seller: req.user._id };
-    const products = await Product.find(filter)
-      .populate('seller', 'name email')
-      .sort({ createdAt: -1 });
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    res.status(200).json({
-      success: true,
-      count: products.length,
-      products,
-    });
+    if (isMongo) {
+      const filter = req.user.role === 'admin' ? {} : { seller: req.user._id };
+      const products = await Product.find(filter)
+        .populate('seller', 'name email')
+        .sort({ createdAt: -1 });
+
+      return res.status(200).json({
+        success: true,
+        count: products.length,
+        products,
+      });
+    } else {
+      const products = memoryStore.getSellerProducts(
+        req.user._id || req.user.id,
+        req.user.role === 'admin'
+      );
+      return res.status(200).json({
+        success: true,
+        count: products.length,
+        products,
+      });
+    }
   } catch (error) {
     next(error);
   }
@@ -114,46 +141,63 @@ const getMyProducts = async (req, res, next) => {
 const createProduct = async (req, res, next) => {
   try {
     const { name, description, price, category, stock, imageUrl } = req.body;
-
     let imageUrls = [];
 
-    // 1. If file uploaded via multipart/form-data
     if (req.file) {
       try {
         const uploadedUrl = await uploadToCloudinary(req.file.buffer, 'kavya_ecommerce/products');
         imageUrls.push(uploadedUrl);
       } catch (uploadError) {
-        console.error('[Cloudinary Upload Error]:', uploadError.message);
         return res.status(500).json({
           success: false,
           message: 'Failed to upload product image to Cloudinary: ' + uploadError.message,
         });
       }
     } else if (imageUrl) {
-      // 2. Direct image URL provided in JSON body
       imageUrls.push(imageUrl);
     } else {
-      // 3. Fallback default high quality product image
       imageUrls.push('https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80');
     }
 
-    const product = await Product.create({
-      name,
-      description,
-      price: Number(price),
-      category,
-      stock: Number(stock || 10),
-      images: imageUrls,
-      seller: req.user._id,
-    });
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    const populatedProduct = await Product.findById(product._id).populate('seller', 'name email role');
+    if (isMongo) {
+      const product = await Product.create({
+        name,
+        description,
+        price: Number(price),
+        category,
+        stock: Number(stock || 10),
+        images: imageUrls,
+        seller: req.user._id,
+      });
 
-    res.status(201).json({
-      success: true,
-      message: 'Product created successfully',
-      product: populatedProduct,
-    });
+      const populatedProduct = await Product.findById(product._id).populate('seller', 'name email role');
+
+      return res.status(201).json({
+        success: true,
+        message: 'Product created successfully',
+        product: populatedProduct,
+      });
+    } else {
+      const newProduct = memoryStore.createProduct(
+        {
+          name,
+          description,
+          price,
+          category,
+          stock,
+          images: imageUrls,
+        },
+        req.user
+      );
+
+      return res.status(201).json({
+        success: true,
+        message: 'Product created successfully',
+        product: newProduct,
+      });
+    }
   } catch (error) {
     next(error);
   }
@@ -165,37 +209,49 @@ const createProduct = async (req, res, next) => {
 const updateProduct = async (req, res, next) => {
   try {
     const { name, description, price, category, stock, imageUrl } = req.body;
-    let product = req.product; // Attached by authorizeProductOwnerOrAdmin middleware
+    let replacementImage = null;
 
-    // Handle new image upload if provided
     if (req.file) {
-      try {
-        const uploadedUrl = await uploadToCloudinary(req.file.buffer, 'kavya_ecommerce/products');
-        product.images = [uploadedUrl];
-      } catch (uploadError) {
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to upload replacement image to Cloudinary: ' + uploadError.message,
-        });
-      }
+      replacementImage = await uploadToCloudinary(req.file.buffer, 'kavya_ecommerce/products');
     } else if (imageUrl) {
-      product.images = [imageUrl];
+      replacementImage = imageUrl;
     }
 
-    if (name !== undefined) product.name = name;
-    if (description !== undefined) product.description = description;
-    if (price !== undefined) product.price = Number(price);
-    if (category !== undefined) product.category = category;
-    if (stock !== undefined) product.stock = Number(stock);
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    await product.save();
-    const updatedProduct = await Product.findById(product._id).populate('seller', 'name email role');
+    if (isMongo) {
+      let product = req.product;
+      if (replacementImage) product.images = [replacementImage];
+      if (name !== undefined) product.name = name;
+      if (description !== undefined) product.description = description;
+      if (price !== undefined) product.price = Number(price);
+      if (category !== undefined) product.category = category;
+      if (stock !== undefined) product.stock = Number(stock);
 
-    res.status(200).json({
-      success: true,
-      message: 'Product updated successfully',
-      product: updatedProduct,
-    });
+      await product.save();
+      const updatedProduct = await Product.findById(product._id).populate('seller', 'name email role');
+
+      return res.status(200).json({
+        success: true,
+        message: 'Product updated successfully',
+        product: updatedProduct,
+      });
+    } else {
+      const updatedProduct = memoryStore.updateProduct(req.params.id, {
+        name,
+        description,
+        price,
+        category,
+        stock,
+        imageUrl: replacementImage,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Product updated successfully',
+        product: updatedProduct,
+      });
+    }
   } catch (error) {
     next(error);
   }
@@ -206,11 +262,15 @@ const updateProduct = async (req, res, next) => {
 // @access  Private (Admin, Sales)
 const deleteProduct = async (req, res, next) => {
   try {
-    const product = req.product; // Attached by authorizeProductOwnerOrAdmin middleware
+    const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
 
-    await Product.deleteOne({ _id: product._id });
+    if (isMongo) {
+      await Product.deleteOne({ _id: req.product._id });
+    } else {
+      memoryStore.deleteProduct(req.params.id);
+    }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Product deleted successfully',
     });
@@ -233,7 +293,7 @@ const uploadProductImage = async (req, res, next) => {
 
     const imageUrl = await uploadToCloudinary(req.file.buffer, 'kavya_ecommerce/products');
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       imageUrl,
     });
@@ -251,4 +311,3 @@ module.exports = {
   deleteProduct,
   uploadProductImage,
 };
-

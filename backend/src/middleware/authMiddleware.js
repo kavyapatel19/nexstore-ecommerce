@@ -1,5 +1,7 @@
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const User = require('../models/User');
+const memoryStore = require('../config/memoryStore');
 
 /**
  * Protect routes: verifies JWT in Authorization header
@@ -18,7 +20,15 @@ const protect = async (req, res, next) => {
         process.env.JWT_SECRET || 'super_secret_jwt_key_role_based_ecommerce_platform_2026'
       );
 
-      const user = await User.findById(decoded.id).select('-password');
+      let user;
+      const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
+
+      if (isMongo) {
+        user = await User.findById(decoded.id).select('-password');
+      } else {
+        user = memoryStore.findUserById(decoded.id);
+      }
+
       if (!user) {
         return res.status(401).json({
           success: false,
@@ -27,7 +37,7 @@ const protect = async (req, res, next) => {
       }
 
       req.user = user;
-      next();
+      return next();
     } catch (error) {
       console.error('[AuthMiddleware] Token verification failed:', error.message);
       return res.status(401).json({
@@ -48,4 +58,3 @@ const protect = async (req, res, next) => {
 module.exports = {
   protect,
 };
-
