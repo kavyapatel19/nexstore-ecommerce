@@ -1,0 +1,25 @@
+{
+  "name": "role-based-ecommerce-platform",
+  "version": "1.0.0",
+  "description": "Full Stack Role-Based E-Commerce Platform with RBAC, Cloudinary, and Razorpay",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "seed": "npm --prefix backend run seed",
+    "seed:destroy": "npm --prefix backend run seed:destroy"
+  },
+  "keywords": [
+    "ecommerce",
+    "rbac",
+    "fullstack",
+    "mongodb",
+    "express",
+    "react",
+    "node",
+    "cloudinary",
+    "razorpay"
+  ],
+  "author": "Full Stack Intern",
+  "license": "MIT"
+}
