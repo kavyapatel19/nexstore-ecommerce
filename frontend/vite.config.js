@@ -11,6 +11,13 @@ export default defineConfig({
   preview: {
     port: 4173,
     host: true,
-  }
+  },
+  build: {
+    sourcemap: false,
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      sourcemap: false,
+    },
+  },
 });
-
