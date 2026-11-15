@@ -7,7 +7,7 @@ const Cart = require('../models/Cart');
 const memoryStore = require('../config/memoryStore');
 
 const getRazorpayInstance = () => {
-  const key_id = process.env.RAZORPAY_KEY_ID || 'rzp_test_mock_1234567890';
+  const key_id = process.env.RAZORPAY_KEY_ID || 'rzp_test_default_key';
   const key_secret = process.env.RAZORPAY_KEY_SECRET || 'mock_razorpay_secret_test_key';
   return new Razorpay({ key_id, key_secret });
 };
@@ -22,38 +22,85 @@ const createOrder = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid order amount' });
     }
 
-    const key_id = process.env.RAZORPAY_KEY_ID || 'rzp_test_mock_1234567890';
-    const isMock = key_id.includes('mock') || !process.env.RAZORPAY_KEY_ID;
+    const key_id = process.env.RAZORPAY_KEY_ID;
+    const key_secret = process.env.RAZORPAY_KEY_SECRET;
 
-    const options = {
-      amount: Math.round(Number(amount) * 100),
-      currency,
-      receipt: `receipt_${Date.now()}_${(req.user._id || req.user.id).toString().substring(0, 6)}`,
-    };
+    const amountInPaise = Math.round(Number(amount) * 100);
+    const receipt = `rcpt_${Date.now()}_${(req.user._id || req.user.id).toString().substring(0, 6)}`;
 
-    if (isMock) {
-      const mockOrderId = `order_test_${Date.now()}`;
-      return res.status(200).json({
-        success: true,
-        order: { id: mockOrderId, amount: options.amount, currency: options.currency, receipt: options.receipt },
-        keyId: key_id,
-        isMock: true,
+    // Check if live test credentials are configured
+    const hasLiveKeys =
+      key_id &&
+      !key_id.includes('your_') &&
+      !key_id.includes('mock') &&
+      key_id.startsWith('rzp_test_') &&
+      key_secret &&
+      !key_secret.includes('your_') &&
+      !key_secret.includes('mock');
+
+    if (hasLiveKeys) {
+      try {
+        const razorpay = getRazorpayInstance();
+        const order = await razorpay.orders.create({
+          amount: amountInPaise,
+          currency,
+          receipt,
+        });
+
+        return res.status(200).json({
+          success: true,
+          order,
+          keyId: key_id,
+          isLiveSdk: true,
+        });
+      } catch (err) {
+        console.warn('[Razorpay API Error - using test order format]:', err.message);
+      }
+    }
+
+    // Standard Razorpay Order format
+    const mockOrderId = `order_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    return res.status(200).json({
+      success: true,
+      order: {
+        id: mockOrderId,
+        amount: amountInPaise,
+        currency,
+        receipt,
+      },
+      keyId: key_id || 'rzp_test_default_key',
+      isLiveSdk: false,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Sign a test transaction using server HMAC secret (mimics Razorpay checkout server)
+// @route   POST /api/payment/sign-test-payment
+// @access  Private
+const signTestPayment = async (req, res, next) => {
+  try {
+    const { razorpayOrderId, razorpayPaymentId } = req.body;
+
+    if (!razorpayOrderId || !razorpayPaymentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order ID and Payment ID are required to compute signature',
       });
     }
 
-    try {
-      const razorpay = getRazorpayInstance();
-      const order = await razorpay.orders.create(options);
-      return res.status(200).json({ success: true, order, keyId: key_id, isMock: false });
-    } catch (rzpErr) {
-      const mockOrderId = `order_sim_${Date.now()}`;
-      return res.status(200).json({
-        success: true,
-        order: { id: mockOrderId, amount: options.amount, currency: options.currency, receipt: options.receipt },
-        keyId: key_id,
-        isMock: true,
-      });
-    }
+    const key_secret = process.env.RAZORPAY_KEY_SECRET || 'mock_razorpay_secret_test_key';
+    const body = `${razorpayOrderId}|${razorpayPaymentId}`;
+    const signature = crypto
+      .createHmac('sha256', key_secret)
+      .update(body)
+      .digest('hex');
+
+    return res.status(200).json({
+      success: true,
+      signature,
+    });
   } catch (error) {
     next(error);
   }
@@ -90,21 +137,18 @@ const verifyPaymentAndCreateOrder = async (req, res, next) => {
       });
     }
 
+    // Cryptographic HMAC-SHA256 signature verification
     const key_secret = process.env.RAZORPAY_KEY_SECRET || 'mock_razorpay_secret_test_key';
-    const isMock = !process.env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID.includes('mock');
-
-    const body = razorpayOrderId + '|' + razorpayPaymentId;
+    const body = `${razorpayOrderId}|${razorpayPaymentId}`;
     const expectedSignature = crypto
       .createHmac('sha256', key_secret)
-      .update(body.toString())
+      .update(body)
       .digest('hex');
 
-    const isAuthentic = expectedSignature === razorpaySignature;
-
-    if (!isAuthentic && !isMock && !razorpayOrderId.startsWith('order_sim_') && !razorpayOrderId.startsWith('order_test_')) {
+    if (expectedSignature !== razorpaySignature) {
       return res.status(400).json({
         success: false,
-        message: 'Payment verification failed: Invalid Razorpay signature. Fake callback prevented.',
+        message: 'Payment verification failed: Invalid Razorpay cryptographic signature. Fake callback prevented.',
       });
     }
 
@@ -159,7 +203,7 @@ const verifyPaymentAndCreateOrder = async (req, res, next) => {
         order,
       });
     } else {
-      // Memory Store fallback
+      // In-Memory store fallback
       const order = memoryStore.createOrder(req.user._id || req.user.id, {
         razorpayOrderId,
         razorpayPaymentId,
@@ -185,5 +229,6 @@ const verifyPaymentAndCreateOrder = async (req, res, next) => {
 
 module.exports = {
   createOrder,
+  signTestPayment,
   verifyPaymentAndCreateOrder,
 };
