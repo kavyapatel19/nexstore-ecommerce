@@ -1,6 +1,7 @@
 # Full Stack Developer Internship — Implementation Report
-**Role-Based E-Commerce Platform**
-**Author / Intern:** Full Stack Engineering Intern
+**Role-Based E-Commerce Platform (NexStore)**  
+**Author / Intern:** Kavya Patel  
+**GitHub Repository:** [https://github.com/kavyapatel19/nexstore-ecommerce](https://github.com/kavyapatel19/nexstore-ecommerce)  
 **Evaluation Target:** 1-Day Role-Based E-Commerce Project Benchmark
 
 ---

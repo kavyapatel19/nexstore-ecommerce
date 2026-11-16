@@ -203,8 +203,8 @@ if (expectedSignature !== razorpaySignature) {
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/your-username/kavya-ecommerce.git
-cd kavya-ecommerce
+git clone https://github.com/kavyapatel19/nexstore-ecommerce.git
+cd nexstore-ecommerce
 ```
 
 ### 2. Configure Backend Environment
