@@ -18,7 +18,7 @@ const generateToken = (id) => {
 // @access  Public
 const register = async (req, res, next) => {
   try {
-    const { name, email, password, role } = req.body;
+    let { name, email, password, role } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -26,6 +26,10 @@ const register = async (req, res, next) => {
         message: 'Please provide name, email, and password',
       });
     }
+
+    name = name.trim();
+    email = email.trim().toLowerCase();
+    password = password.trim();
 
     let userRole = 'user';
     if (role && ['user', 'sales'].includes(role)) {
@@ -106,14 +110,17 @@ const register = async (req, res, next) => {
 // @access  Public
 const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide email and password',
+        message: 'Please provide both email and password',
       });
     }
+
+    email = email.trim().toLowerCase();
+    password = password.trim();
 
     const isMongo = mongoose.connection.readyState === 1 && !memoryStore.isMemoryMode;
     let user;
@@ -127,7 +134,7 @@ const login = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password',
+        message: 'Invalid email or password. Please verify credentials.',
       });
     }
 
@@ -135,7 +142,7 @@ const login = async (req, res, next) => {
     if (!isMatch) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password',
+        message: 'Invalid email or password. Please verify credentials.',
       });
     }
 

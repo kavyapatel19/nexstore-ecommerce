@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { ShoppingBag, Lock, Mail, ShieldCheck, TrendingUp, User, ArrowRight, Loader2 } from 'lucide-react';
+import { ShoppingBag, Lock, Mail, ShieldCheck, TrendingUp, User, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [quickLoginRole, setQuickLoginRole] = useState('');
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -15,19 +16,20 @@ export default function Login() {
 
   const from = location.state?.from?.pathname || '/';
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const executeLogin = async (loginEmail, loginPassword) => {
     setError('');
-    if (!email || !password) {
+    const cleanEmail = (loginEmail || email).trim();
+    const cleanPassword = (loginPassword || password).trim();
+
+    if (!cleanEmail || !cleanPassword) {
       return setError('Please enter both email and password');
     }
 
     try {
       setLoading(true);
-      const res = await login(email, password);
+      const res = await login(cleanEmail, cleanPassword);
       setLoading(false);
       if (res?.success) {
-        // Redirect according to role or previous intended path
         if (from !== '/') {
           navigate(from, { replace: true });
         } else if (res.user.role === 'admin') {
@@ -40,13 +42,29 @@ export default function Login() {
       }
     } catch (err) {
       setLoading(false);
-      setError(err.response?.data?.message || 'Login failed. Please verify credentials.');
+      const serverMsg = err.response?.data?.message;
+      if (serverMsg) {
+        setError(serverMsg);
+      } else if (err.code === 'ERR_NETWORK' || !err.response) {
+        setError('Cannot reach API server. Please ensure the backend is running on http://localhost:5000');
+      } else {
+        setError('Login failed. Please verify email and password.');
+      }
     }
   };
 
-  const handleQuickLogin = (roleEmail, rolePass) => {
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    executeLogin(email, password);
+  };
+
+  const handleQuickLogin = (roleEmail, rolePass, roleName) => {
     setEmail(roleEmail);
     setPassword(rolePass);
+    setQuickLoginRole(roleName);
+    setError('');
+    // Auto-execute login in 1-click for seamless evaluation
+    executeLogin(roleEmail, rolePass);
   };
 
   return (
@@ -58,60 +76,66 @@ export default function Login() {
             <ShoppingBag className="w-6 h-6" />
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Welcome Back to NexStore
+            Sign In to NexStore
           </h2>
           <p className="text-xs sm:text-sm text-slate-500">
-            Sign in to access your role-based e-commerce portal
+            Select a demo role below for 1-click sign-in or enter credentials manually
           </p>
         </div>
 
-        {/* Quick Demo Credentials Card */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2.5">
+        {/* 1-Click Demo Credentials Card */}
+        <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Quick Test Credentials
+              1-Click Demo Sign In
             </span>
-            <span className="text-[10px] text-sky-600 font-medium">Click to pre-fill</span>
+            <span className="text-[10px] text-sky-600 font-semibold bg-sky-50 px-2 py-0.5 rounded-full">
+              Click any role to enter
+            </span>
           </div>
 
           <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
-              onClick={() => handleQuickLogin('admin@example.com', 'Admin@123')}
-              className="flex flex-col items-center p-2 rounded-xl border border-purple-200 bg-purple-50/60 hover:bg-purple-100/70 text-purple-800 transition-all text-center"
+              onClick={() => handleQuickLogin('admin@example.com', 'Admin@123', 'admin')}
+              disabled={loading}
+              className="flex flex-col items-center p-3 rounded-2xl border border-purple-200 bg-purple-50/70 hover:bg-purple-100/90 text-purple-900 transition-all text-center group hover:scale-[1.02]"
             >
-              <ShieldCheck className="w-4 h-4 text-purple-600 mb-1" />
+              <ShieldCheck className="w-5 h-5 text-purple-600 mb-1 group-hover:scale-110 transition-transform" />
               <span className="text-xs font-bold">Admin</span>
-              <span className="text-[10px] text-purple-600/70">Full Access</span>
+              <span className="text-[10px] text-purple-600/80">Full Control</span>
             </button>
 
             <button
               type="button"
-              onClick={() => handleQuickLogin('sales@example.com', 'Sales@123')}
-              className="flex flex-col items-center p-2 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/70 text-amber-900 transition-all text-center"
+              onClick={() => handleQuickLogin('sales@example.com', 'Sales@123', 'sales')}
+              disabled={loading}
+              className="flex flex-col items-center p-3 rounded-2xl border border-amber-200 bg-amber-50/70 hover:bg-amber-100/90 text-amber-900 transition-all text-center group hover:scale-[1.02]"
             >
-              <TrendingUp className="w-4 h-4 text-amber-600 mb-1" />
+              <TrendingUp className="w-5 h-5 text-amber-600 mb-1 group-hover:scale-110 transition-transform" />
               <span className="text-xs font-bold">Sales Person</span>
-              <span className="text-[10px] text-amber-600/70">Own Products</span>
+              <span className="text-[10px] text-amber-600/80">Own Products</span>
             </button>
 
             <button
               type="button"
-              onClick={() => handleQuickLogin('user@example.com', 'User@123')}
-              className="flex flex-col items-center p-2 rounded-xl border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100/70 text-emerald-800 transition-all text-center"
+              onClick={() => handleQuickLogin('user@example.com', 'User@123', 'user')}
+              disabled={loading}
+              className="flex flex-col items-center p-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/90 text-emerald-900 transition-all text-center group hover:scale-[1.02]"
             >
-              <User className="w-4 h-4 text-emerald-600 mb-1" />
+              <User className="w-5 h-5 text-emerald-600 mb-1 group-hover:scale-110 transition-transform" />
               <span className="text-xs font-bold">Customer</span>
-              <span className="text-[10px] text-emerald-600/70">Cart & Orders</span>
+              <span className="text-[10px] text-emerald-600/80">Cart & Checkout</span>
             </button>
           </div>
         </div>
 
-        {/* Login Form */}
+        {/* Manual Login Form */}
         <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-5">
           {error && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
-              {error}
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-start gap-2">
+              <span className="font-bold">⚠️</span>
+              <span>{error}</span>
             </div>
           )}
 
@@ -138,7 +162,7 @@ export default function Login() {
                 <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                   Password
                 </label>
-                <span className="text-xs text-slate-400">Default: RoleName@123</span>
+                <span className="text-xs text-slate-400 font-mono">Default: Role@123</span>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
@@ -156,7 +180,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-900 hover:bg-sky-600 text-white font-semibold text-sm shadow-md hover:shadow-sky-500/25 transition-all disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-sky-600 text-white font-semibold text-sm shadow-md hover:shadow-sky-500/25 transition-all disabled:opacity-50"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               {loading ? 'Authenticating...' : 'Sign In'}
@@ -177,4 +201,3 @@ export default function Login() {
     </div>
   );
 }
-

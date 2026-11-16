@@ -15,12 +15,14 @@ const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 const app = express();
 
 // Security Headers
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+}));
 
-// Cross-Origin Resource Sharing
+// Cross-Origin Resource Sharing with dynamic origin reflection (prevents browser wildcard-with-credentials rejection)
 app.use(
   cors({
-    origin: '*',
+    origin: (origin, callback) => callback(null, true),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -62,4 +64,3 @@ app.use(notFound);
 app.use(errorHandler);
 
 module.exports = app;
-
